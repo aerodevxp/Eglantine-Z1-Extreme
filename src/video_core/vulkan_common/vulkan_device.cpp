@@ -1823,10 +1823,21 @@ void Device::CollectPhysicalMemoryInfo() {
         device_access_memory += heap_size;
     }
     if (is_integrated) {
-        const s64 available_memory = static_cast<s64>(device_access_memory - device_initial_usage);
-        const u64 memory_size = Settings::values.vram_usage_mode.GetValue() == Settings::VramUsageMode::Aggressive ? 6_GiB : 4_GiB;
-        device_access_memory = static_cast<u64>(std::max<s64>(std::min<s64>(available_memory - 8_GiB, memory_size), std::min<s64>(local_memory, memory_size)));
-    } else {
+            const s64 available_memory = static_cast<s64>(device_access_memory - device_initial_usage);
+            // A device-local heap on an integrated GPU is system memory, but a carveout makes it a
+            // real reservation: that heap is what the caches may fill, so it is the budget. The flat
+            // limits below only mean anything when the heap is the whole of system RAM (a Radeon 780M
+            // reports 21 GB), and MaxCriticalMemory caps those in any case. The flat 4 GiB limit alone
+            // kept a 24 GB handheld with an 8 GB carveout at 4 GiB, so the collector evicted with half
+            // its heap unused and images ended up unbacked.
+            const u64 flat_memory = Settings::values.vram_usage_mode.GetValue() ==
+                                            Settings::VramUsageMode::Aggressive
+                                        ? 6_GiB
+                                        : 4_GiB;
+            const u64 carveout =
+                (std::min)(local_memory, static_cast<u64>((std::max)(available_memory, s64{0})));
+            device_access_memory = (std::max)(carveout, (std::min)(local_memory, flat_memory));
+        } else {
         const u64 reserve_memory = std::min<u64>(device_access_memory / 8, 1_GiB);
         device_access_memory -= reserve_memory;
         if (Settings::values.vram_usage_mode.GetValue() != Settings::VramUsageMode::Aggressive) {

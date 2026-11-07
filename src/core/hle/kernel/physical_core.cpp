@@ -9,6 +9,7 @@
 #include <thread>
 #include "common/scope_exit.h"
 #include "common/settings.h"
+#include "common/thread.h"
 #include "core/core.h"
 #include "core/debugger/debugger.h"
 #include "core/hle/kernel/k_process.h"
@@ -228,6 +229,8 @@ void PhysicalCore::Idle() {
     // Guest job systems hand work between cores many times per frame; blocking at once adds the
     // host's thread wake-up latency to every handoff. EDEN_NX2_IDLE_SPIN_US=<n>: poll for that
     // many microseconds before blocking.
+    //
+    Common::PollThreadPolicies();
     static const auto spin = std::chrono::microseconds{[] {
         const char* text = std::getenv("EDEN_NX2_IDLE_SPIN_US");
         return text ? std::strtoll(text, nullptr, 10) : 0LL;

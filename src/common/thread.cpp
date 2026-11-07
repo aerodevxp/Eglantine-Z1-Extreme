@@ -45,6 +45,11 @@
 #include <sys/resource.h>
 #include <algorithm>
 
+#include "common/cpu_features.h"
+#if defined(__linux__) && defined(ARCHITECTURE_x86_64) && !defined(__ANDROID__)
+#include "common/thread_placement_linux.h"
+#endif
+
 namespace {
 constexpr int NICE_AUDIO = -16;
 constexpr int NICE_URGENT_DISPLAY = -8;
@@ -438,6 +443,9 @@ void RememberCurrentThreadNice(pid_t tid, s32 nice_value) {
 #endif
 
 #include "common/cpu_features.h"
+#if defined(__linux__) && defined(ARCHITECTURE_x86_64) && !defined(__ANDROID__)
+#include "common/thread_placement_linux.h"
+#endif
 #ifdef ARCHITECTURE_x86_64
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -546,6 +554,8 @@ void SetCurrentThreadToPerformanceCores() {
         return;
     }
     SetCurrentThreadCoreGroup(CoreGroup::Performance);
+#elif defined(__linux__) && defined(ARCHITECTURE_x86_64)
+    Placement::SetGroup(Placement::Group::PhysicalCore);
 #endif
 }
 
@@ -556,6 +566,8 @@ void SetCurrentThreadToEfficiencyCores() {
         return;
     }
     SetCurrentThreadCoreGroup(CoreGroup::Efficiency);
+#elif defined(__linux__) && defined(ARCHITECTURE_x86_64)
+    Placement::SetGroup(Placement::Group::Efficiency);
 #endif
 }
 
@@ -563,6 +575,8 @@ void SetCurrentThreadToBackgroundWork() {
 #if defined(__ANDROID__)
     ADPF::AddCurrentThread(ADPF::Session::Background);
     SetCurrentThreadCoreGroup(CoreGroup::Unrestricted);
+#elif defined(__linux__) && defined(ARCHITECTURE_x86_64)
+    Placement::SetGroup(Placement::Group::Efficiency);
 #endif
 }
 
@@ -570,6 +584,19 @@ void SetCurrentThreadToAllCores() {
 #if defined(__ANDROID__)
     ADPF::RemoveCurrentThread();
     SetCurrentThreadCoreGroup(CoreGroup::Unrestricted);
+#elif defined(__linux__) && defined(ARCHITECTURE_x86_64)
+    Placement::SetGroup(Placement::Group::Unrestricted);
+#endif
+}
+
+void SetCurrentThreadToPhysicalCore(std::size_t core) {
+#if defined(__ANDROID__)
+    (void)core;
+    SetCurrentThreadToPerformanceCores();
+#elif defined(__linux__) && defined(ARCHITECTURE_x86_64)
+    Placement::SetCore(core);
+#else
+    (void)core;
 #endif
 }
 

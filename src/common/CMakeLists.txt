@@ -189,7 +189,16 @@ if(ARCHITECTURE_x86_64)
         x64/rdtsc.h
         x64/xbyak.h)
     target_link_libraries(common PRIVATE xbyak::xbyak)
+    target_sources(common PRIVATE host_profile.cpp host_profile.h)
+    if(UNIX AND NOT ANDROID)
+        target_sources(common PRIVATE thread_placement_linux.cpp thread_placement_linux.h)
+    endif()
 endif()
+
+target_sources(common PRIVATE host_profile.cpp host_profile.h)
+    if(UNIX AND NOT ANDROID)
+        target_sources(common PRIVATE thread_placement_linux.cpp thread_placement_linux.h)
+    endif()
 
 if(MSVC)
     target_compile_definitions(

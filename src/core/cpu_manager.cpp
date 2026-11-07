@@ -174,8 +174,7 @@ void CpuManager::RunThread(std::stop_token token, std::size_t core) {
     std::string name = is_multicore ? ("CPUCore_" + std::to_string(core)) : std::string{"CPUThread"};
     Common::SetCurrentThreadName(name.c_str());
     Common::SetCurrentThreadPriority(Common::ThreadPriority::Critical);
-    Common::SetCurrentThreadToPerformanceCores();
-    auto& data = core_data[core];
+    Common::SetCurrentThreadToPhysicalCore(core);    auto& data = core_data[core];
     data.host_context = Common::Fiber::ThreadToFiber();
 
     // Cleanup

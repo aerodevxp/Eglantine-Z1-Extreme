@@ -108,6 +108,9 @@ enum class ThreadPlacement : u32 {
 void SetCurrentThreadPriority(ThreadPriority new_priority);
 void SetCurrentThreadName(const char* name);
 void SetCurrentThreadToPerformanceCores();
+void SetCurrentThreadToPhysicalCore(std::size_t core);
+
+void SetCurrentThreadToPhysicalCore(std::size_t core);
 void SetCurrentThreadToEfficiencyCores();
 void SetCurrentThreadToBackgroundWork();
 void SetCurrentThreadToAllCores();

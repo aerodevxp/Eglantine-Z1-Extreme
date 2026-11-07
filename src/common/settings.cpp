@@ -456,6 +456,22 @@ u16 SpeedLimit() {
     return 100;
 }
 
+double FramePacingTargetFps() {
+    switch (values.frame_pacing_mode.GetValue()) {
+    case FramePacingMode::Target_30:
+        return 30.0;
+    case FramePacingMode::Target_60:
+        return 60.0;
+    case FramePacingMode::Target_90:
+        return 90.0;
+    case FramePacingMode::Target_120:
+        return 120.0;
+    case FramePacingMode::Target_Auto:
+    default:
+        return 0.0;
+    }
+}
+
 void SetSpeedMode(const SpeedMode& mode) {
     values.current_speed_mode.SetValue(mode);
 

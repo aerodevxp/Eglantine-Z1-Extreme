@@ -13,7 +13,8 @@ namespace AudioCore {
 
 AudioManager::AudioManager() {
     thread = std::jthread([this](std::stop_token stop_token) {
-        Common::SetCurrentThreadName("AudioManager");
+        Common::SetCurrentThreadName("Audio");
+        Common::PinCurrentThread(7);
         std::unique_lock l{events.GetAudioEventLock()};
         events.ClearEvents();
         while (!stop_token.stop_requested()) {

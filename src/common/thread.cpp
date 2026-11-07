@@ -589,6 +589,19 @@ void SetCurrentThreadToAllCores() {
 #endif
 }
 
+void PinCurrentThread(u32 cpu) {
+#if defined(__linux__)
+    cpu_set_t mask;
+    CPU_ZERO(&mask);
+    CPU_SET(cpu, &mask);
+    if (pthread_setaffinity_np(pthread_self(), sizeof(mask), &mask) != 0) {
+        LOG_DEBUG(Common, "Could not pin thread to CPU {}: {}", cpu, GetLastErrorMsg());
+    }
+#else
+    (void)cpu;
+#endif
+}
+
 void SetCurrentThreadToPhysicalCore(std::size_t core) {
 #if defined(__ANDROID__)
     (void)core;

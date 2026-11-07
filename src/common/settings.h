@@ -1009,6 +1009,8 @@ float Volume();
 
 // speed limit ops
 u16 SpeedLimit();
+// The explicit frame pacing target in fps, or 0 when pacing follows the speed limit.
+double FramePacingTargetFps();
 void SetSpeedMode(const SpeedMode &mode);
 void ToggleStandardMode();
 void ToggleTurboMode();

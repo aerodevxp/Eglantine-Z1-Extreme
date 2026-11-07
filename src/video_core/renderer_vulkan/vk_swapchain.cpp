@@ -51,8 +51,12 @@ static VkPresentModeKHR ChooseSwapPresentMode(bool has_imm, bool has_mailbox,
         if (Settings::values.frame_gen.GetValue()) {
             return mode == Settings::VSyncMode::FifoRelaxed ? mode : Settings::VSyncMode::Fifo;
         }
-        if (Settings::values.use_speed_limit.GetValue() &&
-            Settings::values.current_speed_mode.GetValue() != Settings::SpeedMode::Turbo) {
+        // An explicit frame pacing target is the user asking for this framerate, so do not move
+        // them to a present mode that free-runs. Auto keeps the unlocked behaviour.
+        if (Settings::values.frame_pacing_mode.GetValue() !=
+                Settings::FramePacingMode::Target_Auto ||
+            (Settings::values.use_speed_limit.GetValue() &&
+                Settings::values.current_speed_mode.GetValue() != Settings::SpeedMode::Turbo)) {
             return mode;
         }
         switch (mode) {
@@ -180,23 +184,15 @@ bool Swapchain::AcquireNextImage(bool may_flush) {
     }
 
     const auto wait_with_frame_pacing = [this, may_flush] {
-    switch (Settings::values.frame_pacing_mode.GetValue()) {
-    case Settings::FramePacingMode::Target_Auto:
-        scheduler.Wait(resource_ticks[image_index], 0.0, may_flush);
-        break;
-    case Settings::FramePacingMode::Target_30:
-        scheduler.Wait(resource_ticks[image_index], 30.0, may_flush);
-        break;
-    case Settings::FramePacingMode::Target_60:
-        scheduler.Wait(resource_ticks[image_index], 60.0, may_flush);
-        break;
-    case Settings::FramePacingMode::Target_90:
-        scheduler.Wait(resource_ticks[image_index], 90.0, may_flush);
-        break;
-    case Settings::FramePacingMode::Target_120:
-        scheduler.Wait(resource_ticks[image_index], 120.0, may_flush);
-        break;
-    }
+        // Switch 2 titles pace in PaceToVblank, on the guest's present thread, where the console's
+        // compositor does. Pacing here as well filled the same interval twice: each pacer measured
+        // slack that already contained the other's sleep, so a frame a hair over the deadline paid
+        // two intervals (33 ms frames shown at 15 fps) and the next came in early. Only pace here
+        // when nothing else will.
+        const bool guest_paces =
+            Settings::CurrentProgramIsSwitch2() && Settings::values.use_speed_limit.GetValue();
+        scheduler.Wait(resource_ticks[image_index],
+                        guest_paces ? 0.0 : Settings::FramePacingTargetFps(), may_flush);
     };
 
 #ifdef __ANDROID__

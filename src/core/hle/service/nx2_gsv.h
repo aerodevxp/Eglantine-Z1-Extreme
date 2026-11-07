@@ -1865,8 +1865,15 @@ private:
             LOG_INFO(Service, "nx2:vi2 present #{} swap interval {} at {} Hz (word 12 = {:#x})",
                      m_presents, swap_interval, refresh_rate, timing);
         }
-        const auto interval = std::chrono::nanoseconds{
-            100'000'000'000LL * swap_interval / refresh_rate / Settings::SpeedLimit()};
+        // An explicit pacing target is the frame rate the user asked for, so pace the guest to it
+        // rather than to the speed limit (which is what the game's own swap word works out to).
+        // Both pacers then agree on one number instead of beating against each other.
+        const double pacing_target = Settings::FramePacingTargetFps();
+        const auto interval =
+            pacing_target > 0.0
+                ? std::chrono::nanoseconds{static_cast<s64>(1'000'000'000.0 / pacing_target)}
+                : std::chrono::nanoseconds{100'000'000'000LL * swap_interval / refresh_rate /
+                                            Settings::SpeedLimit()};
         const auto now = std::chrono::steady_clock::now();
         if (now > m_next_vblank + interval) {
             // Running slower than the swap interval: show at once and don't bank the lost time.

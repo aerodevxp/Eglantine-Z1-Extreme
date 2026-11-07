@@ -118,4 +118,7 @@ void SetCurrentThreadToAllCores();
 void RefreshThreadPolicies();
 void PollThreadPolicies();
 
+void PinCurrentThread(u32 cpu);
+
+
 } // namespace Common

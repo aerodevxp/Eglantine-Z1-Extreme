@@ -164,40 +164,64 @@ public:
 
     /// Waits for the given GPU tick, optionally pacing frames. Threads other than the one that
     /// records (the async present thread) pass may_flush = false: flushing from there records
-    /// into the current chunk while that thread does (corrupt command buffers, crashes). They
-    /// wait for the recording thread to submit the tick instead, and give up after 20 ms (it may
-    /// be waiting for them).
+    /// into the current chunk while that thread does (corrupt command buffers, crashes).
     void Wait(u64 tick, double target_fps = 0.0, bool may_flush = true) {
-        if (tick > 0 && (may_flush || WaitForSubmission(tick))) {
-            if (tick >= master_semaphore->CurrentTick()) {
-                Flush();
+        if (tick > 0) {
+            if (may_flush || WaitForSubmission(tick)) {
+                if (tick >= master_semaphore->CurrentTick()) {
+                    Flush();
+                }
+                master_semaphore->Wait(tick);
+            } else {
+                // The tick is not submitted yet, so waiting on it would block until it is. Waiting
+                // on nothing at all lets the present thread blit into an image the GPU is still
+                // writing, so wait on the newest tick that has been submitted.
+                const u64 submitted = master_semaphore->CurrentTick();
+                if (submitted > 0) {
+                    master_semaphore->Wait(submitted - 1);
+                }
             }
-            master_semaphore->Wait(tick);
         }
-        if (Settings::values.use_speed_limit.GetValue() && target_fps > 0.0) {
-            auto now = std::chrono::steady_clock::now();
-            if (last_target_fps != target_fps) {
-                frame_interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(std::chrono::duration<double>(1.0 / target_fps));
-                max_frame_count = static_cast<int>(0.1 * target_fps);
-                last_target_fps = target_fps;
-                frame_counter = 0;
-                start_time = now;
-            }
-            frame_counter++;
-            auto target_time = start_time + frame_interval * frame_counter;
-            if (target_time >= now) {
-                constexpr auto spin_tail = std::chrono::milliseconds(1);
-                auto sleep_time = target_time - now;
-                if (sleep_time > spin_tail * 2) {
-                    std::this_thread::sleep_for(sleep_time - spin_tail);
-                }
-                while (std::chrono::steady_clock::now() < target_time) {
-                    std::this_thread::yield();
-                }
-            } else if (frame_counter > max_frame_count) {
-                frame_counter = 0;
-                start_time = now;
-            }
+        PaceFrame(target_fps);
+    }
+
+    /// Holds the caller to target_fps, as a floor rather than an added delay: the guest's own
+    /// vblank pacing (PaceToVblank) already holds the frame to the target, so sleeping a whole
+    /// interval here on top of a frame that took one anyway paced every frame twice. The two
+    /// clocks then beat against each other (vblank pacing swung 1-20 ms between presents, which
+    /// is the judder). Only the part of the interval the frame did not already use is slept.
+    void PaceFrame(double target_fps) {
+        if (target_fps <= 0.0) {
+            last_target_fps = 0.0;
+            return;
+        }
+        constexpr auto spin_tail = std::chrono::microseconds{500};
+        const auto interval = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+            std::chrono::duration<double>(1.0 / target_fps));
+        const auto now = std::chrono::steady_clock::now();
+        if (last_target_fps != target_fps) {
+            last_target_fps = target_fps;
+            next_frame_time = now;
+        }
+        next_frame_time += interval;
+        const auto behind = now - next_frame_time;
+        if (behind >= interval) {
+            // The frame itself already took a whole interval: it is the limiter, not us.
+            next_frame_time = now;
+            return;
+        }
+        if (behind > decltype(behind)::zero()) {
+            next_frame_time = now;
+        }
+        const auto sleep_time = next_frame_time - now;
+        if (sleep_time > spin_tail * 2) {
+            std::this_thread::sleep_for(sleep_time - spin_tail);
+        }
+        // Spin the tail on PAUSE instead of sched_yield: yield is a syscall (~1 us here) and the
+        // loop ran it for the whole tail, thousands of times a frame. PAUSE hands the pipeline to
+        // the sibling thread and costs ~30 cycles without leaving userspace.
+        while (std::chrono::steady_clock::now() < next_frame_time) {
+            __builtin_ia32_pause();
         }
     }
 
@@ -366,11 +390,8 @@ private:
     bool worker_waiting{}; ///< The worker is waiting for work (guarded by queue_mutex)
     std::jthread worker_thread;
 
-    std::chrono::steady_clock::duration frame_interval{};
-    std::chrono::steady_clock::time_point start_time{};
+    std::chrono::steady_clock::time_point next_frame_time{};
     double last_target_fps{};
-    u64 max_frame_count{};
-    u64 frame_counter{};
 };
 
 } // namespace Vulkan
